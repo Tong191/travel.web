@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Travel Plan - 極簡玻璃版</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        body { 
+            background: linear-gradient(135deg, #e0e0e0 0%, #f5f5f5 100%);
+            color: #1a1a1a;
+        }
+        
+        .glass-panel { 
+            background: rgba(255, 255, 255, 0.65); 
+            backdrop-filter: blur(16px); 
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.1);
+        }
+        .glass-dark {
+            background: rgba(30, 30, 30, 0.85);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        input[type="time"]::-webkit-calendar-picker-indicator {
+            background: transparent;
+            bottom: 0; color: transparent; cursor: pointer; height: auto; left: 0; position: absolute; right: 0; top: 0; width: auto;
+        }
+    </style>
+</head>
+<body class="flex justify-center items-center min-h-screen">
+
+<div id="app" class="w-full max-w-md h-[100dvh] relative overflow-hidden flex flex-col font-sans sm:rounded-[2.5rem] sm:h-[90vh] sm:shadow-2xl bg-zinc-100">
+    
+    <div v-if="currentView === 'setup'" class="absolute inset-0 z-50 glass-dark flex flex-col items-center justify-center p-6 text-white">
+        <div class="w-20 h-20 rounded-full border border-zinc-500 bg-black/30 flex items-center justify-center mb-6 shadow-inner">
+            <i class="fa-solid fa-plane-departure text-3xl text-zinc-200"></i>
+        </div>
+        <h1 class="text-3xl font-black tracking-widest mb-2">VOYAGE</h1>
+        <p class="text-zinc-400 text-xs mb-10 uppercase tracking-widest">Travel Planner</p>
+
+        <div class="glass-panel text-zinc-800 w-full rounded-[2rem] p-6">
+            <div class="bg-white/50 rounded-2xl p-4 mb-3 flex items-center shadow-sm">
+                <i class="fa-solid fa-location-dot text-zinc-400 mr-3"></i>
+                <input v-model="setupData.destination" type="text" placeholder="目的地 (例: Iceland & France)" class="bg-transparent w-full outline-none font-bold placeholder-zinc-400">
+            </div>
+
+            <div class="flex gap-3 mb-6">
+                <div class="flex-1 bg-white/50 rounded-2xl p-4 shadow-sm">
+                    <div class="text-[10px] text-zinc-500 font-bold mb-1 tracking-wider">START</div>
+                    <div class="flex items-center">
+                        <input v-model="setupData.startDate" type="date" class="bg-transparent w-full outline-none text-sm font-bold">
+                    </div>
+                </div>
+                <div class="flex-1 bg-white/50 rounded-2xl p-4 shadow-sm">
+                    <div class="text-[10px] text-zinc-500 font-bold mb-1 tracking-wider">END</div>
+                    <div class="flex items-center">
+                        <input v-model="setupData.endDate" type="date" class="bg-transparent w-full outline-none text-sm font-bold">
+                    </div>
+                </div>
+            </div>
+
+            <button @click="startTrip" class="w-full bg-zinc-900 text-white font-bold py-4 rounded-2xl active:scale-95 transition-transform shadow-lg">
+                建立行程
+            </button>
+        </div>
+    </div>
+
+    <div v-else class="flex flex-col h-full relative">
+        
+        <div class="glass-dark pt-12 pb-4 px-4 shrink-0 z-20">
+            <div class="flex space-x-3 overflow-x-auto no-scrollbar items-center">
+                <button v-for="(day, index) in tripDays" :key="index" 
+                        @click="selectedDate = day.date"
+                        :class="selectedDate === day.date ? 'bg-white text-zinc-900 shadow-md' : 'text-zinc-400 border border-zinc-600 hover:bg-zinc-800'"
+                        class="flex flex-col items-center justify-center w-16 h-16 rounded-full transition-all shrink-0">
+                    <span class="text-[10px] mb-0.5 font-semibold">{{ day.displayDate }}</span>
+                    <span class="font-black text-sm">D{{ index + 1 }}</span>
+                </button>
+            </div>
+        </div>
+
+        <main class="flex-1 overflow-y-auto no-scrollbar pb-28 pt-4 px-4">
+            
+            <div v-show="activeTab === 'itinerary'" class="space-y-4">
+                
+                <div v-for="flight in currentDayFlights" :key="flight.id" class="bg-gradient-to-br from-zinc-800 to-black rounded-3xl p-5 text-white shadow-xl relative">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-xs text-zinc-400">Flight</span>
+                        <i class="fa-solid fa-plane text-zinc-500"></i>
+                        <button @click="deleteFlight(flight.id)" class="text-zinc-500 hover:text-red-400"><i class="fa-solid fa-trash"></i></button>
+                    </div>
+                    <div class="flex justify-between items-end mb-4 relative">
+                        <div>
+                            <div class="text-3xl font-black">{{ flight.depTime }}</div>
+                            <div class="text-xs font-bold text-zinc-400 mt-1">{{ flight.depAirport }}</div>
+                        </div>
+                        <div class="absolute left-1/2 -translate-x-1/2 bottom-0 bg-white/10 backdrop-blur-md rounded-xl px-3 py-1 text-center border border-white/10">
+                            <div class="text-[9px] text-zinc-400 uppercase tracking-wider">Duration</div>
+                            <div class="text-xs font-bold">{{ calculateFlightDuration(flight) }}</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-3xl font-black">{{ flight.arrTime }}</div>
+                            <div class="text-xs font-bold text-zinc-400 mt-1">{{ flight.arrAirport }}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-for="acc in currentDayAccommodations" :key="acc.id" class="bg-gradient-to-br from-zinc-200 to-white border border-white rounded-3xl p-5 shadow-md relative">
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="text-xs font-bold text-zinc-500"><i class="fa-solid fa-bed mr-1"></i> Accommodation</span>
+                        <button @click="deleteAccommodation(acc.id)" class="text-zinc-400 hover:text-red-500"><i class="fa-solid fa-trash"></i></button>
+                    </div>
+                    <div class="mb-3">
+                        <div class="text-lg font-black text-zinc-800">{{ acc.name }}</div>
+                        <a v-if="acc.location" :href="'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(acc.location)" target="_blank" class="text-[11px] text-blue-500 hover:text-blue-700 font-bold flex items-center mt-1">
+                            <i class="fa-solid fa-location-arrow mr-1"></i> {{ acc.location }}
+                        </a>
+                    </div>
+                    <div class="flex bg-zinc-100 rounded-xl p-3 border border-zinc-200">
+                        <div class="flex-1 border-r border-zinc-300">
+                            <div class="text-[9px] text-zinc-400 font-bold tracking-wider uppercase">Check-in</div>
+                            <div class="font-black text-zinc-800">{{ acc.checkIn }}</div>
+                        </div>
+                        <div class="flex-1 pl-3">
+                            <div class="text-[9px] text-zinc-400 font-bold tracking-wider uppercase">Check-out</div>
+                            <div class="font-black text-zinc-800">{{ acc.checkOut }}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-for="item in currentDayItineraries" :key="item.id" class="glass-panel rounded-3xl p-4 flex shadow-sm">
+                    <div class="w-1/3 border-r border-zinc-200 pr-3 flex flex-col items-center justify-center relative">
+                        <input type="time" v-model="item.time" class="text-2xl font-black text-center bg-transparent w-full outline-none">
+                        <div class="text-[10px] text-zinc-400 mt-1"><i class="fa-solid fa-pen fa-xs mr-1"></i>修改</div>
+                    </div>
+                    <div class="w-2/3 pl-4 space-y-3 relative flex flex-col justify-center">
+                        <button @click="deleteItinerary(item.id)" class="absolute -top-1 -right-1 text-zinc-300 hover:text-red-500 p-1">
+                            <i class="fa-solid fa-trash fa-sm"></i>
+                        </button>
+                        
+                        <div class="pr-5">
+                            <input v-model="item.title" type="text" placeholder="行程名稱..." class="w-full bg-transparent font-bold text-zinc-800 outline-none placeholder-zinc-300">
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                            <select v-model="item.category" class="bg-zinc-100 text-zinc-600 text-[10px] font-bold px-2 py-1 rounded-lg outline-none appearance-none shrink-0">
+                                <option>🏞️ 景點</option>
+                                <option>🍽️ 餐廳</option>
+                                <option>🚗 交通</option>
+                                <option>🎟️ 活動</option>
+                            </select>
+                            
+                            <div class="flex-1 flex items-center bg-zinc-100 rounded-lg px-2 py-1 overflow-hidden">
+                                <a v-if="item.location" :href="'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(item.location)" target="_blank" class="text-blue-500 hover:text-blue-600 mr-2 z-10 shrink-0">
+                                    <i class="fa-solid fa-location-arrow text-[12px] animate-pulse"></i>
+                                </a>
+                                <i v-else class="fa-solid fa-location-dot text-zinc-400 text-[10px] mr-2 shrink-0"></i>
+                                
+                                <input v-model="item.location" type="text" placeholder="地點 (輸入後點左圖示導航)" class="w-full bg-transparent text-[10px] outline-none font-medium text-zinc-700">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-2 mt-4">
+                    <button @click="addItinerary" class="glass-panel text-zinc-800 text-xs font-bold py-3 rounded-2xl shadow-sm flex flex-col items-center justify-center">
+                        <i class="fa-solid fa-map-pin mb-1 text-lg"></i> 行程
+                    </button>
+                    <button @click="showAccModal = true" class="glass-panel text-zinc-800 text-xs font-bold py-3 rounded-2xl shadow-sm flex flex-col items-center justify-center">
+                        <i class="fa-solid fa-bed mb-1 text-lg text-indigo-400"></i> 住宿
+                    </button>
+                    <button @click="showFlightModal = true" class="glass-dark text-white text-xs font-bold py-3 rounded-2xl shadow-sm flex flex-col items-center justify-center">
+                        <i class="fa-solid fa-plane mb-1 text-lg"></i> 航班
+                    </button>
+                </div>
+            </div>
+
+            <div v-show="activeTab === 'expenses'" class="space-y-6">
+                
+                <div class="glass-dark rounded-3xl p-6 text-center text-white relative shadow-xl">
+                    <button @click="updateExchangeRate" class="absolute top-4 right-4 bg-white/10 rounded-full px-3 py-1 text-[10px] font-bold flex items-center border border-white/20">
+                        <i class="fa-solid fa-rotate mr-1" :class="{'animate-spin': isUpdatingRate}"></i> 匯率
+                    </button>
+                    <div class="text-[10px] text-zinc-400 tracking-widest uppercase mt-4">Total Expenses</div>
+                    <div class="text-4xl font-black my-2">NT$ {{ totalTwdAmount.toLocaleString() }}</div>
+                    
+                    <div class="flex justify-center gap-4 text-[10px] text-zinc-400 mt-4 border-t border-zinc-700 pt-3">
+                        <span>1 ISK ≈ NT$ {{ rates.ISK }}</span>
+                        <span>1 EUR ≈ NT$ {{ rates.EUR }}</span>
+                    </div>
+                </div>
+
+                <div class="glass-panel rounded-3xl p-5 shadow-sm">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="font-black text-zinc-800">新增支出</h3>
+                        
+                        <div class="bg-zinc-200 rounded-full p-1 flex text-xs font-bold">
+                            <button @click="formExpense.type = 'personal'" :class="formExpense.type === 'personal' ? 'bg-white text-zinc-900 shadow' : 'text-zinc-500'" class="px-3 py-1 rounded-full transition">個人</button>
+                            <button @click="formExpense.type = 'shared'" :class="formExpense.type === 'shared' ? 'bg-zinc-900 text-white shadow' : 'text-zinc-500'" class="px-3 py-1 rounded-full transition">分帳</button>
+                        </div>
+                    </div>
+                    
+                    <div class="flex gap-2 mb-4">
+                        <div class="flex-[2] bg-white/60 rounded-xl p-3 border border-white">
+                            <input v-model="formExpense.item" type="text" placeholder="項目名稱" class="bg-transparent w-full outline-none text-sm font-bold text-zinc-800">
+                        </div>
+                        <div class="flex-[1.5] bg-white/60 rounded-xl p-3 border border-white flex items-center relative">
+                            <select v-model="formExpense.currency" class="bg-transparent font-black text-zinc-800 outline-none text-xs mr-1 appearance-none z-10">
+                                <option value="ISK">ISK</option>
+                                <option value="EUR">EUR</option>
+                            </select>
+                            <i class="fa-solid fa-caret-down text-[8px] text-zinc-400 mr-2"></i>
+                            <input v-model.number="formExpense.amount" type="number" placeholder="金額" class="bg-transparent w-full outline-none text-sm font-bold text-zinc-800 text-right">
+                        </div>
+                    </div>
+
+                    <div v-if="formExpense.type === 'shared'" class="bg-zinc-100 rounded-xl p-3 mb-4 flex justify-between items-center border border-white">
+                        <span class="text-xs font-bold text-zinc-600">由誰代墊？</span>
+                        <select v-model="formExpense.payer" class="bg-white text-xs rounded-lg px-2 py-1 outline-none font-bold text-zinc-800 shadow-sm">
+                            <option v-for="m in members" :key="m" :value="m">{{ m }}</option>
+                        </select>
+                    </div>
+
+                    <button @click="addExpense" class="w-full bg-zinc-900 text-white font-bold py-3 rounded-xl shadow-md">
+                        加入帳單
+                    </button>
+                </div>
+
+                <div v-if="settlements.length > 0" class="glass-panel rounded-3xl p-5 shadow-sm">
+                    <h3 class="font-black text-zinc-800 mb-4 text-sm flex items-center">
+                        <i class="fa-solid fa-calculator text-zinc-400 mr-2"></i> 分帳結算 (轉換為台幣)
+                    </h3>
+                    <div class="space-y-2">
+                        <div v-for="(settle, i) in settlements" :key="i" class="bg-white/60 p-3 rounded-xl flex justify-between items-center text-sm border border-white">
+                            <span class="font-bold text-zinc-700">{{ settle.debtor }}</span>
+                            <span class="text-[10px] text-zinc-500"><i class="fa-solid fa-arrow-right mx-2"></i>應給</span>
+                            <span class="font-bold text-zinc-700">{{ settle.creditor }}</span>
+                            <span class="font-black text-zinc-900">NT$ {{ settle.amount.toLocaleString() }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-if="expenses.length > 0" class="glass-panel rounded-3xl p-5 shadow-sm">
+                    <h3 class="font-black text-zinc-800 mb-4 text-sm">帳單明細</h3>
+                    <div class="space-y-3">
+                        <div v-for="exp in expenses" :key="exp.id" class="flex justify-between items-center border-b border-zinc-200/50 pb-3 last:border-0 last:pb-0">
+                            <div>
+                                <div class="font-bold text-zinc-800 text-sm flex items-center">
+                                    <span v-if="exp.type === 'shared'" class="bg-zinc-800 text-white text-[8px] px-1.5 py-0.5 rounded mr-2">分帳</span>
+                                    <span v-else class="bg-zinc-300 text-zinc-700 text-[8px] px-1.5 py-0.5 rounded mr-2">個人</span>
+                                    {{ exp.item }}
+                                </div>
+                                <div v-if="exp.type === 'shared'" class="text-[10px] text-zinc-500 mt-1">{{ exp.payer }} 代墊</div>
+                            </div>
+                            <div class="text-right">
+                                <div class="font-black text-zinc-800">{{ exp.currency }} {{ exp.amount }}</div>
+                                <button @click="deleteExpense(exp.id)" class="text-[10px] text-red-400 mt-1"><i class="fa-solid fa-xmark"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <nav class="absolute bottom-0 w-full glass-panel border-t border-white/50 flex justify-around items-center pb-8 pt-4 z-30 rounded-t-[2.5rem]">
+            <button @click="activeTab = 'itinerary'" :class="activeTab === 'itinerary' ? 'text-zinc-900' : 'text-zinc-400'" class="flex flex-col items-center justify-center w-1/2 transition-colors">
+                <i class="fa-solid fa-calendar-days text-xl mb-1"></i>
+                <span class="text-[10px] font-bold">行程</span>
+            </button>
+            <div class="h-8 w-px bg-zinc-300"></div>
+            <button @click="activeTab = 'expenses'" :class="activeTab === 'expenses' ? 'text-zinc-900' : 'text-zinc-400'" class="flex flex-col items-center justify-center w-1/2 transition-colors">
+                <i class="fa-solid fa-wallet text-xl mb-1"></i>
+                <span class="text-[10px] font-bold">支出</span>
+            </button>
+        </nav>
+    </div>
+
+    <div v-if="showAccModal" class="absolute inset-0 bg-zinc-900/60 z-50 flex justify-center items-end p-4 backdrop-blur-sm">
+        <div class="glass-panel w-full rounded-[2.5rem] p-6 mb-4 shadow-2xl">
+            <h3 class="text-lg font-black text-zinc-800 mb-4"><i class="fa-solid fa-bed text-indigo-500 mr-2"></i>新增住宿</h3>
+            <div class="space-y-4">
+                <input v-model="formAcc.name" type="text" placeholder="飯店/Airbnb 名稱" class="w-full bg-white/70 border border-white rounded-xl p-3 outline-none text-sm font-bold">
+                <input v-model="formAcc.location" type="text" placeholder="詳細地址 (支援 Google Map 導航)" class="w-full bg-white/70 border border-white rounded-xl p-3 outline-none text-sm font-bold">
+                <div class="flex gap-2">
+                    <div class="flex-1">
+                        <label class="text-[10px] text-zinc-500 font-bold ml-1">Check-in</label>
+                        <input v-model="formAcc.checkIn" type="time" class="w-full bg-white/70 border border-white rounded-xl p-3 outline-none text-sm font-bold">
+                    </div>
+                    <div class="flex-1">
+                        <label class="text-[10px] text-zinc-500 font-bold ml-1">Check-out</label>
+                        <input v-model="formAcc.checkOut" type="time" class="w-full bg-white/70 border border-white rounded-xl p-3 outline-none text-sm font-bold">
+                    </div>
+                </div>
+            </div>
+            <div class="flex gap-3 mt-6">
+                <button @click="showAccModal = false" class="flex-1 bg-white/50 text-zinc-600 font-bold py-3 rounded-xl border border-white">取消</button>
+                <button @click="saveAccommodation" class="flex-1 bg-zinc-900 text-white font-bold py-3 rounded-xl">儲存</button>
+            </div>
+        </div>
+    </div>
+
+    <div v-if="showFlightModal" class="absolute inset-0 bg-zinc-900/60 z-50 flex justify-center items-end p-4 backdrop-blur-sm">
+        <div class="glass-panel w-full rounded-[2.5rem] p-6 mb-4 shadow-2xl">
+            <h3 class="text-lg font-black text-zinc-800 mb-4"><i class="fa-solid fa-plane text-zinc-500 mr-2"></i>新增航班</h3>
+            <div class="space-y-4">
+                <div class="flex gap-2">
+                    <div class="flex-1"><input v-model="formFlight.depAirport" type="text" placeholder="起飛機場" class="w-full bg-white/70 border border-white rounded-xl p-3 outline-none text-xs font-bold"></div>
+                    <div class="flex-1"><input v-model="formFlight.depTime" type="time" class="w-full bg-white/70 border border-white rounded-xl p-3 outline-none text-xs font-bold"></div>
+                    <div class="flex-1">
+                        <select v-model="formFlight.depOffset" class="w-full bg-white/70 border border-white rounded-xl p-3 outline-none text-[10px] font-bold">
+                            <option value="+3">UTC+3 (芬蘭)</option><option value="+1">UTC+1 (法國)</option><option value="+8">UTC+8 (台灣)</option><option value="0">UTC+0 (冰島)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="flex gap-2">
+                    <div class="flex-1"><input v-model="formFlight.arrAirport" type="text" placeholder="抵達機場" class="w-full bg-white/70 border border-white rounded-xl p-3 outline-none text-xs font-bold"></div>
+                    <div class="flex-1"><input v-model="formFlight.arrTime" type="time" class="w-full bg-white/70 border border-white rounded-xl p-3 outline-none text-xs font-bold"></div>
+                    <div class="flex-1">
+                        <select v-model="formFlight.arrOffset" class="w-full bg-white/70 border border-white rounded-xl p-3 outline-none text-[10px] font-bold">
+                            <option value="0">UTC+0 (冰島)</option><option value="+1">UTC+1 (法國)</option><option value="+3">UTC+3 (芬蘭)</option><option value="+8">UTC+8 (台灣)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="flex gap-3 mt-6">
+                <button @click="showFlightModal = false" class="flex-1 bg-white/50 text-zinc-600 font-bold py-3 rounded-xl border border-white">取消</button>
+                <button @click="saveFlight" class="flex-1 bg-zinc-900 text-white font-bold py-3 rounded-xl">儲存</button>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    const { createApp, ref, reactive, computed } = Vue;
+
+    createApp({
+        setup() {
+            const currentView = ref('setup');
+            const activeTab = ref('itinerary');
+            
+            const today = new Date();
+            const tmr = new Date(today); tmr.setDate(tmr.getDate() + 2);
+            const formatDate = (date) => date.toISOString().split('T')[0];
+
+            const setupData = ref({ destination: 'Iceland & France', startDate: formatDate(today), endDate: formatDate(tmr) });
+            
+            const rates = reactive({ 'ISK': 0.23, 'EUR': 34.5 });
+            const isUpdatingRate = ref(false);
+
+            const updateExchangeRate = () => {
+                isUpdatingRate.value = true;
+                setTimeout(() => {
+                    rates['ISK'] += (Math.random() > 0.5 ? 0.01 : -0.01);
+                    rates['EUR'] += (Math.random() > 0.5 ? 0.1 : -0.1);
+                    rates['ISK'] = parseFloat(rates['ISK'].toFixed(2));
+                    rates['EUR'] = parseFloat(rates['EUR'].toFixed(2));
+                    isUpdatingRate.value = false;
+                }, 800);
+            };
+
+            const tripDays = computed(() => {
+                let days = []; let curr = new Date(setupData.value.startDate); let end = new Date(setupData.value.endDate);
+                while(curr <= end) { days.push({ date: formatDate(curr), displayDate: `${curr.getMonth()+1}/${curr.getDate()}` }); curr.setDate(curr.getDate() + 1); }
+                return days;
+            });
+
+            const selectedDate = ref('');
+            const startTrip = () => { selectedDate.value = tripDays.value[0]?.date || ''; currentView.value = 'main'; };
+
+            // --- 住宿 ---
+            const accommodations = ref([]);
+            const currentDayAccommodations = computed(() => accommodations.value.filter(a => a.date === selectedDate.value));
+            const showAccModal = ref(false);
+            const formAcc = ref({ name: '', location: '', checkIn: '15:00', checkOut: '11:00' });
+            
+            const saveAccommodation = () => {
+                accommodations.value.push({ id: Date.now(), date: selectedDate.value, ...formAcc.value });
+                showAccModal.value = false;
+                formAcc.value = { name: '', location: '', checkIn: '15:00', checkOut: '11:00' };
+            };
+            const deleteAccommodation = (id) => accommodations.value = accommodations.value.filter(a => a.id !== id);
+
+            // --- 航班 ---
+            const flights = ref([{ id: 1, date: formatDate(today), depAirport: 'TPE', depTime: '12:25', depOffset: '+8', arrAirport: 'NRT', arrTime: '14:20', arrOffset: '+9' }]);
+            const currentDayFlights = computed(() => flights.value.filter(f => f.date === selectedDate.value));
+            const showFlightModal = ref(false);
+            const formFlight = ref({ depAirport: '', depTime: '12:00', depOffset: '+8', arrAirport: '', arrTime: '15:00', arrOffset: '+8' });
+
+            const calculateFlightDuration = (flight) => {
+                const parseTime = (timeStr) => { let [h, m] = timeStr.split(':').map(Number); return h * 60 + m; };
+                let depUTC = parseTime(flight.depTime) - (Number(flight.depOffset) * 60);
+                let arrUTC = parseTime(flight.arrTime) - (Number(flight.arrOffset) * 60);
+                if (arrUTC < depUTC) arrUTC += 24 * 60; 
+                let diff = arrUTC - depUTC; return `${Math.floor(diff / 60)}h ${diff % 60}m`;
+            };
+
+            const saveFlight = () => { flights.value.push({ id: Date.now(), date: selectedDate.value, ...formFlight.value }); showFlightModal.value = false; };
+            const deleteFlight = (id) => flights.value = flights.value.filter(f => f.id !== id);
+
+            // --- 行程 ---
+            const itineraries = ref([
+                { id: 1, date: formatDate(today), time: '09:00', title: '藍湖溫泉', category: '🏞️ 景點', location: 'Blue Lagoon' }
+            ]);
+            const currentDayItineraries = computed(() => {
+                return itineraries.value.filter(i => i.date === selectedDate.value).sort((a,b) => a.time.localeCompare(b.time));
+            });
+            const addItinerary = () => {
+                itineraries.value.push({ id: Date.now(), date: selectedDate.value, time: '10:00', title: '', category: '🏞️ 景點', location: '' });
+            };
+            const deleteItinerary = (id) => itineraries.value = itineraries.value.filter(i => i.id !== id);
+
+            // --- 支出與分帳 ---
+            const members = ref(['我自己', '旅伴A', '旅伴B']);
+            const expenses = ref([]);
+            const formExpense = ref({ item: '', amount: null, type: 'shared', payer: '我自己', currency: 'ISK' });
+
+            const totalTwdAmount = computed(() => {
+                return Math.round(expenses.value.reduce((sum, exp) => sum + (exp.amount * rates[exp.currency]), 0));
+            });
+
+            const addExpense = () => {
+                if(!formExpense.value.item || !formExpense.value.amount) return;
+                expenses.value.push({ id: Date.now(), date: selectedDate.value, ...formExpense.value });
+                formExpense.value.item = ''; formExpense.value.amount = null;
+            };
+            const deleteExpense = (id) => expenses.value = expenses.value.filter(e => e.id !== id);
+
+            const settlements = computed(() => {
+                let balances = {}; members.value.forEach(m => balances[m] = 0);
+                expenses.value.filter(e => e.type === 'shared').forEach(exp => {
+                    let twdAmount = exp.amount * rates[exp.currency];
+                    balances[exp.payer] += twdAmount; 
+                    let split = twdAmount / members.value.length;
+                    members.value.forEach(m => balances[m] -= split); 
+                });
+
+                let debtors = Object.keys(balances).filter(k => balances[k] < -1).map(k => ({name: k, amount: Math.abs(balances[k])}));
+                let creditors = Object.keys(balances).filter(k => balances[k] > 1).map(k => ({name: k, amount: balances[k]}));
+                let results = []; let i = 0, j = 0;
+                
+                while(i < debtors.length && j < creditors.length) {
+                    let d = debtors[i], c = creditors[j]; let amount = Math.min(d.amount, c.amount);
+                    results.push({ debtor: d.name, creditor: c.name, amount: Math.round(amount) });
+                    d.amount -= amount; c.amount -= amount;
+                    if (d.amount < 1) i++; if (c.amount < 1) j++;
+                }
+                return results;
+            });
+
+            return {
+                currentView, setupData, startTrip, rates, isUpdatingRate, updateExchangeRate,
+                tripDays, selectedDate, activeTab,
+                accommodations, currentDayAccommodations, showAccModal, formAcc, saveAccommodation, deleteAccommodation,
+                flights, currentDayFlights, showFlightModal, formFlight, saveFlight, deleteFlight, calculateFlightDuration,
+                itineraries, currentDayItineraries, addItinerary, deleteItinerary,
+                members, expenses, formExpense, addExpense, deleteExpense, totalTwdAmount, settlements
+            };
+        }
+    }).mount('#app');
+</script>
+
+</body>
+</html>
