@@ -76,8 +76,12 @@
 
     <div v-else class="flex flex-col h-full relative">
         
-        <div class="glass-dark pt-12 pb-4 px-4 shrink-0 z-20">
-            <div class="flex space-x-3 overflow-x-auto no-scrollbar items-center">
+        <div class="glass-dark pt-12 pb-4 px-4 shrink-0 z-20 relative">
+            <button @click="resetData" class="absolute top-10 right-4 text-zinc-400 hover:text-white text-[10px] transition-colors">
+                <i class="fa-solid fa-rotate-right mr-1"></i>重設
+            </button>
+            
+            <div class="flex space-x-3 overflow-x-auto no-scrollbar items-center pr-10">
                 <button v-for="(day, index) in tripDays" :key="index" 
                         @click="selectedDate = day.date"
                         :class="selectedDate === day.date ? 'bg-white text-zinc-900 shadow-md' : 'text-zinc-400 border border-zinc-600 hover:bg-zinc-800'"
@@ -120,19 +124,22 @@
                         <button @click="deleteAccommodation(acc.id)" class="text-zinc-400 hover:text-red-500"><i class="fa-solid fa-trash"></i></button>
                     </div>
                     <div class="mb-3">
-                        <div class="text-lg font-black text-zinc-800">{{ acc.name }}</div>
-                        <a v-if="acc.location" :href="'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(acc.location)" target="_blank" class="text-[11px] text-blue-500 hover:text-blue-700 font-bold flex items-center mt-1">
-                            <i class="fa-solid fa-location-arrow mr-1"></i> {{ acc.location }}
-                        </a>
+                        <input v-model="acc.name" class="text-lg font-black text-zinc-800 bg-transparent outline-none w-full" placeholder="飯店名稱...">
+                        <div class="flex items-center mt-1">
+                            <a v-if="acc.location" :href="'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(acc.location)" target="_blank" class="text-[11px] text-blue-500 hover:text-blue-700 font-bold flex items-center shrink-0">
+                                <i class="fa-solid fa-location-arrow mr-1"></i>導航
+                            </a>
+                            <input v-model="acc.location" class="text-[11px] text-zinc-500 bg-transparent outline-none w-full ml-2" placeholder="詳細地址...">
+                        </div>
                     </div>
                     <div class="flex bg-zinc-100 rounded-xl p-3 border border-zinc-200">
                         <div class="flex-1 border-r border-zinc-300">
                             <div class="text-[9px] text-zinc-400 font-bold tracking-wider uppercase">Check-in</div>
-                            <div class="font-black text-zinc-800">{{ acc.checkIn }}</div>
+                            <input type="time" v-model="acc.checkIn" class="font-black text-zinc-800 bg-transparent outline-none">
                         </div>
                         <div class="flex-1 pl-3">
                             <div class="text-[9px] text-zinc-400 font-bold tracking-wider uppercase">Check-out</div>
-                            <div class="font-black text-zinc-800">{{ acc.checkOut }}</div>
+                            <input type="time" v-model="acc.checkOut" class="font-black text-zinc-800 bg-transparent outline-none">
                         </div>
                     </div>
                 </div>
@@ -165,7 +172,7 @@
                                 </a>
                                 <i v-else class="fa-solid fa-location-dot text-zinc-400 text-[10px] mr-2 shrink-0"></i>
                                 
-                                <input v-model="item.location" type="text" placeholder="地點 (輸入後點左圖示導航)" class="w-full bg-transparent text-[10px] outline-none font-medium text-zinc-700">
+                                <input v-model="item.location" type="text" placeholder="地點 (點左方導航)" class="w-full bg-transparent text-[10px] outline-none font-medium text-zinc-700">
                             </div>
                         </div>
                     </div>
@@ -341,10 +348,11 @@
 </div>
 
 <script>
-    const { createApp, ref, reactive, computed } = Vue;
+    const { createApp, ref, reactive, computed, watch, onMounted } = Vue;
 
     createApp({
         setup() {
+            // --- 狀態定義 ---
             const currentView = ref('setup');
             const activeTab = ref('itinerary');
             
@@ -353,10 +361,67 @@
             const formatDate = (date) => date.toISOString().split('T')[0];
 
             const setupData = ref({ destination: 'Iceland & France', startDate: formatDate(today), endDate: formatDate(tmr) });
-            
             const rates = reactive({ 'ISK': 0.23, 'EUR': 34.5 });
             const isUpdatingRate = ref(false);
+            const selectedDate = ref('');
+            
+            const accommodations = ref([]);
+            const flights = ref([]);
+            const itineraries = ref([]);
+            const expenses = ref([]);
+            const members = ref(['我自己', '旅伴A', '旅伴B']);
 
+            // --- LocalStorage 資料存取邏輯 (精華在這裡) ---
+            const loadData = () => {
+                const saved = localStorage.getItem('voyage_travel_data');
+                if (saved) {
+                    try {
+                        const parsed = JSON.parse(saved);
+                        currentView.value = parsed.currentView || 'setup';
+                        if (parsed.setupData) setupData.value = parsed.setupData;
+                        if (parsed.rates) Object.assign(rates, parsed.rates);
+                        if (parsed.selectedDate) selectedDate.value = parsed.selectedDate;
+                        if (parsed.accommodations) accommodations.value = parsed.accommodations;
+                        if (parsed.flights) flights.value = parsed.flights;
+                        if (parsed.itineraries) itineraries.value = parsed.itineraries;
+                        if (parsed.expenses) expenses.value = parsed.expenses;
+                    } catch (e) {
+                        console.error('資料讀取失敗', e);
+                    }
+                }
+            };
+
+            onMounted(() => {
+                loadData();
+            });
+
+            // 監聽所有重要資料，有變動就自動存檔
+            watch(
+                [currentView, setupData, rates, selectedDate, accommodations, flights, itineraries, expenses], 
+                () => {
+                    const dataToSave = {
+                        currentView: currentView.value,
+                        setupData: setupData.value,
+                        rates: rates,
+                        selectedDate: selectedDate.value,
+                        accommodations: accommodations.value,
+                        flights: flights.value,
+                        itineraries: itineraries.value,
+                        expenses: expenses.value
+                    };
+                    localStorage.setItem('voyage_travel_data', JSON.stringify(dataToSave));
+                }, 
+                { deep: true } // 開啟深度監聽，確保陣列/物件內部的修改也會觸發存檔
+            );
+
+            const resetData = () => {
+                if (confirm('確定要刪除所有行程與記帳資料，重新開始嗎？\n(注意：此動作無法復原)')) {
+                    localStorage.removeItem('voyage_travel_data');
+                    location.reload(); // 重新整理網頁，回到初始狀態
+                }
+            };
+
+            // --- 其他業務邏輯 ---
             const updateExchangeRate = () => {
                 isUpdatingRate.value = true;
                 setTimeout(() => {
@@ -374,15 +439,15 @@
                 return days;
             });
 
-            const selectedDate = ref('');
-            const startTrip = () => { selectedDate.value = tripDays.value[0]?.date || ''; currentView.value = 'main'; };
+            const startTrip = () => { 
+                if(!selectedDate.value) selectedDate.value = tripDays.value[0]?.date || ''; 
+                currentView.value = 'main'; 
+            };
 
-            // --- 住宿 ---
-            const accommodations = ref([]);
+            // 住宿
             const currentDayAccommodations = computed(() => accommodations.value.filter(a => a.date === selectedDate.value));
             const showAccModal = ref(false);
             const formAcc = ref({ name: '', location: '', checkIn: '15:00', checkOut: '11:00' });
-            
             const saveAccommodation = () => {
                 accommodations.value.push({ id: Date.now(), date: selectedDate.value, ...formAcc.value });
                 showAccModal.value = false;
@@ -390,12 +455,10 @@
             };
             const deleteAccommodation = (id) => accommodations.value = accommodations.value.filter(a => a.id !== id);
 
-            // --- 航班 ---
-            const flights = ref([{ id: 1, date: formatDate(today), depAirport: 'TPE', depTime: '12:25', depOffset: '+8', arrAirport: 'NRT', arrTime: '14:20', arrOffset: '+9' }]);
+            // 航班
             const currentDayFlights = computed(() => flights.value.filter(f => f.date === selectedDate.value));
             const showFlightModal = ref(false);
             const formFlight = ref({ depAirport: '', depTime: '12:00', depOffset: '+8', arrAirport: '', arrTime: '15:00', arrOffset: '+8' });
-
             const calculateFlightDuration = (flight) => {
                 const parseTime = (timeStr) => { let [h, m] = timeStr.split(':').map(Number); return h * 60 + m; };
                 let depUTC = parseTime(flight.depTime) - (Number(flight.depOffset) * 60);
@@ -403,14 +466,10 @@
                 if (arrUTC < depUTC) arrUTC += 24 * 60; 
                 let diff = arrUTC - depUTC; return `${Math.floor(diff / 60)}h ${diff % 60}m`;
             };
-
             const saveFlight = () => { flights.value.push({ id: Date.now(), date: selectedDate.value, ...formFlight.value }); showFlightModal.value = false; };
             const deleteFlight = (id) => flights.value = flights.value.filter(f => f.id !== id);
 
-            // --- 行程 ---
-            const itineraries = ref([
-                { id: 1, date: formatDate(today), time: '09:00', title: '藍湖溫泉', category: '🏞️ 景點', location: 'Blue Lagoon' }
-            ]);
+            // 行程
             const currentDayItineraries = computed(() => {
                 return itineraries.value.filter(i => i.date === selectedDate.value).sort((a,b) => a.time.localeCompare(b.time));
             });
@@ -419,22 +478,17 @@
             };
             const deleteItinerary = (id) => itineraries.value = itineraries.value.filter(i => i.id !== id);
 
-            // --- 支出與分帳 ---
-            const members = ref(['我自己', '旅伴A', '旅伴B']);
-            const expenses = ref([]);
+            // 支出
             const formExpense = ref({ item: '', amount: null, type: 'shared', payer: '我自己', currency: 'ISK' });
-
             const totalTwdAmount = computed(() => {
                 return Math.round(expenses.value.reduce((sum, exp) => sum + (exp.amount * rates[exp.currency]), 0));
             });
-
             const addExpense = () => {
                 if(!formExpense.value.item || !formExpense.value.amount) return;
                 expenses.value.push({ id: Date.now(), date: selectedDate.value, ...formExpense.value });
                 formExpense.value.item = ''; formExpense.value.amount = null;
             };
             const deleteExpense = (id) => expenses.value = expenses.value.filter(e => e.id !== id);
-
             const settlements = computed(() => {
                 let balances = {}; members.value.forEach(m => balances[m] = 0);
                 expenses.value.filter(e => e.type === 'shared').forEach(exp => {
@@ -443,11 +497,9 @@
                     let split = twdAmount / members.value.length;
                     members.value.forEach(m => balances[m] -= split); 
                 });
-
                 let debtors = Object.keys(balances).filter(k => balances[k] < -1).map(k => ({name: k, amount: Math.abs(balances[k])}));
                 let creditors = Object.keys(balances).filter(k => balances[k] > 1).map(k => ({name: k, amount: balances[k]}));
                 let results = []; let i = 0, j = 0;
-                
                 while(i < debtors.length && j < creditors.length) {
                     let d = debtors[i], c = creditors[j]; let amount = Math.min(d.amount, c.amount);
                     results.push({ debtor: d.name, creditor: c.name, amount: Math.round(amount) });
@@ -458,7 +510,7 @@
             });
 
             return {
-                currentView, setupData, startTrip, rates, isUpdatingRate, updateExchangeRate,
+                currentView, setupData, startTrip, resetData, rates, isUpdatingRate, updateExchangeRate,
                 tripDays, selectedDate, activeTab,
                 accommodations, currentDayAccommodations, showAccModal, formAcc, saveAccommodation, deleteAccommodation,
                 flights, currentDayFlights, showFlightModal, formFlight, saveFlight, deleteFlight, calculateFlightDuration,
@@ -470,5 +522,4 @@
 </script>
 
 </body>
-
 </html>
